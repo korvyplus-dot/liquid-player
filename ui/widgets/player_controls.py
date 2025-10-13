@@ -1,8 +1,11 @@
 import qtawesome
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QSize, Qt, Signal, QTimer
 from PySide6.QtWidgets import QWidget, QPushButton, QHBoxLayout, QSlider, QLabel
 
 class PlayerControlsWidget(QWidget):
+    next_requested = Signal()
+    prev_requested = Signal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
 
@@ -52,6 +55,10 @@ class PlayerControlsWidget(QWidget):
         layout.addStretch()
 
         # --- Volume Slider ---
+        self.volume_container = QWidget()
+        volume_layout = QHBoxLayout(self.volume_container)
+        volume_layout.setContentsMargins(0,0,0,0)
+
         self.volume_up_icon = qtawesome.icon('fa5s.volume-up', color=self.icon_color)
         self.volume_mute_icon = qtawesome.icon('fa5s.volume-mute', color=self.icon_color)
 
@@ -93,8 +100,36 @@ class PlayerControlsWidget(QWidget):
                 border-radius: 2px;
             }
         """)
-        layout.addWidget(self.volume_button)
-        layout.addWidget(self.volume_slider)
+        volume_layout.addWidget(self.volume_button)
+        volume_layout.addWidget(self.volume_slider)
+        layout.addWidget(self.volume_container)
+
+        # --- Throttling ---
+        self.throttle_timer = QTimer(self)
+        self.throttle_timer.setSingleShot(True)
+        self.throttle_timer.setInterval(500) # 500ms throttle
+        self.throttle_timer.timeout.connect(self._enable_buttons)
+
+        self.next_button.clicked.connect(self._on_next_clicked)
+        self.prev_button.clicked.connect(self._on_prev_clicked)
+
+    def _on_next_clicked(self):
+        if not self.throttle_timer.isActive():
+            self.next_requested.emit()
+            self.next_button.setDisabled(True)
+            self.prev_button.setDisabled(True)
+            self.throttle_timer.start()
+
+    def _on_prev_clicked(self):
+        if not self.throttle_timer.isActive():
+            self.prev_requested.emit()
+            self.next_button.setDisabled(True)
+            self.prev_button.setDisabled(True)
+            self.throttle_timer.start()
+
+    def _enable_buttons(self):
+        self.next_button.setDisabled(False)
+        self.prev_button.setDisabled(False)
 
     def set_play_icon(self, is_playing):
         icon = self.pause_icon if is_playing else self.play_icon
@@ -104,3 +139,6 @@ class PlayerControlsWidget(QWidget):
         icon = self.volume_mute_icon if is_muted else self.volume_up_icon
         self.volume_button.setIcon(icon)
         self.volume_slider.setDisabled(is_muted)
+
+    def set_volume_controls_visible(self, visible):
+        self.volume_container.setVisible(visible)

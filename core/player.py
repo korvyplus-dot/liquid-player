@@ -1,6 +1,37 @@
 import vlc
 import os
 from PySide6.QtCore import QObject, Signal
+import mutagen
+import tempfile
+
+def get_album_art(track_path):
+    """
+    Extracts album art from a music file and saves it to a temporary file.
+    Returns the path to the temporary file, or None if no art is found.
+    """
+    try:
+        audio = mutagen.File(track_path, easy=True)
+        if audio is None:
+            return None
+
+        if 'APIC:' in audio:
+            artwork = audio['APIC:'].data
+            ext = audio['APIC:'].mime.split('/')[-1]
+            with tempfile.NamedTemporaryFile(suffix=f'.{ext}', delete=False) as tmp:
+                tmp.write(artwork)
+                return "file:///" + tmp.name.replace('\\', '/')
+        # Fallback for FLAC files
+        elif hasattr(audio, 'pictures') and audio.pictures:
+            artwork = audio.pictures[0].data
+            ext = audio.pictures[0].mime.split('/')[-1]
+            with tempfile.NamedTemporaryFile(suffix=f'.{ext}', delete=False) as tmp:
+                tmp.write(artwork)
+                return "file:///" + tmp.name.replace('\\', '/')
+
+    except Exception as e:
+        print(f"Error extracting album art: {e}")
+    return None
+
 
 class Player(QObject):
     # --- Signals to safely update the UI from any thread ---
@@ -63,8 +94,11 @@ class Player(QObject):
         if not media: return
 
         # --- Album Art ---
-        artwork_url = media.get_meta(vlc.Meta.ArtworkURL)
+        artwork_url = get_album_art(self.playlist[self.current_track_index])
+        if not artwork_url:
+            artwork_url = media.get_meta(vlc.Meta.ArtworkURL)
         self.album_art_changed.emit(artwork_url)
+
 
         # --- Track Info ---
         title = media.get_meta(vlc.Meta.Title) or os.path.basename(self.playlist[self.current_track_index])
@@ -92,6 +126,7 @@ class Player(QObject):
     def next(self):
         """Plays the next track in the playlist."""
         if not self.playlist: return
+        self.player.stop()
         self.current_track_index = (self.current_track_index + 1) % len(self.playlist)
         self._load_track()
         self.player.play()
@@ -99,6 +134,7 @@ class Player(QObject):
     def previous(self):
         """Plays the previous track in the playlist."""
         if not self.playlist: return
+        self.player.stop()
         self.current_track_index = (self.current_track_index - 1 + len(self.playlist)) % len(self.playlist)
         self._load_track()
         self.player.play()

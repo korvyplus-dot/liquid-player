@@ -2,6 +2,7 @@ from PySide6.QtWidgets import QWidget, QLabel, QVBoxLayout
 from PySide6.QtGui import QPixmap
 from PySide6.QtCore import Qt, QSize
 import qtawesome
+from urllib.parse import unquote
 
 class AlbumArtWidget(QWidget):
     def __init__(self, parent=None):
@@ -18,11 +19,25 @@ class AlbumArtWidget(QWidget):
 
         # Set a default placeholder icon
         self.default_pixmap = qtawesome.icon('fa5s.music', color='#555555').pixmap(QSize(150, 150))
+        self.pixmap = None
         self.set_album_art(None)
 
     def set_album_art(self, image_path):
         if image_path and image_path.startswith('file:///'):
-            pixmap = QPixmap(image_path[8:]) # QPixmap needs a clean path, remove 'file:///'
+            path = unquote(image_path[8:])
+            self.pixmap = QPixmap(path)
         else:
-            pixmap = self.default_pixmap
-        self.album_art_label.setPixmap(pixmap.scaled(self.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            self.pixmap = self.default_pixmap
+        
+        if self.pixmap.isNull():
+            self.pixmap = self.default_pixmap
+
+        self.update_pixmap()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.update_pixmap()
+
+    def update_pixmap(self):
+        if self.pixmap:
+            self.album_art_label.setPixmap(self.pixmap.scaled(self.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
