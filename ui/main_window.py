@@ -1,6 +1,6 @@
 import sys
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout
-from PySide6.QtCore import Qt, QPoint
+from PySide6.QtCore import Qt, QPoint, QTimer, Property, QPropertyAnimation
 from PySide6.QtGui import QColor
 import ctypes
 from ctypes import wintypes
@@ -38,13 +38,6 @@ class MainWindow(QMainWindow):
 
         self.central_widget = QWidget()
         self.central_widget.setObjectName("central_widget")
-        self.central_widget.setStyleSheet(f"""
-            #central_widget {{
-                background-color: transparent; 
-                border: 4px solid beige; 
-                border-radius: 10px;
-            }}
-        """)
         self.setCentralWidget(self.central_widget)
 
         self.main_layout = QVBoxLayout(self.central_widget)
@@ -53,12 +46,18 @@ class MainWindow(QMainWindow):
         self.dragging = False
         self.offset = QPoint()
 
+        self._tint_color = QColor(0,0,0,0)
+
         # Set default tint color to white
         default_color = QColor(255, 255, 255, 30)
         self.set_tint_color(default_color)
 
+    def get_tint_color(self):
+        return self._tint_color
+
     def set_tint_color(self, color: QColor):
-        """Sets the tint color for the acrylic effect."""
+        '''Sets the tint color for the acrylic effect.'''
+        self._tint_color = color
         user32 = ctypes.windll.user32
         set_window_composition_attribute = user32.SetWindowCompositionAttribute
 
@@ -74,6 +73,23 @@ class MainWindow(QMainWindow):
         data.Data = ctypes.cast(ctypes.pointer(accent), ctypes.POINTER(ACCENT_POLICY))
 
         set_window_composition_attribute(int(self.winId()), ctypes.pointer(data))
+        
+        border_color = color.lighter(150)
+        self.central_widget.setStyleSheet(f'''
+            #central_widget {{
+                background-color: transparent;
+                border: 4px solid {border_color.name()};
+                border-radius: 10px;
+            }}
+        ''')
+
+    tint_color = Property(QColor, get_tint_color, set_tint_color)
+
+    def start_color_animation(self, color: QColor):
+        self.anim = QPropertyAnimation(self, b"tint_color")
+        self.anim.setEndValue(color)
+        self.anim.setDuration(1000) # 1000ms for a smooth animation
+        self.anim.start()
 
     def mousePressEvent(self, event):
         self.dragging = True
@@ -93,6 +109,13 @@ def run():
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
+
+    def change_color():
+        blue_color = QColor(0, 0, 255, 30)
+        window.start_color_animation(blue_color)
+
+    QTimer.singleShot(10000, change_color)
+    
     sys.exit(app.exec())
 
 if __name__ == "__main__":
