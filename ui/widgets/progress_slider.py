@@ -1,62 +1,104 @@
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QWidget, QSlider, QHBoxLayout, QLabel, QToolTip
-from PySide6.QtGui import QCursor
+from PySide6.QtWidgets import QWidget, QSlider, QHBoxLayout, QVBoxLayout, QLabel, QToolTip
+from PySide6.QtGui import QCursor, QColor
 
 class ProgressSlider(QWidget):
     """
     A widget containing a slider and labels to display and control track progress.
     """
-    # Signal emitted when the user releases the slider handle
     seek_requested = Signal(float)
 
-    def __init__(self, parent=None):
+    def __init__(self, main_window_color: QColor, parent=None):
         super().__init__(parent)
-        self._is_seeking = False # Flag to prevent updates while user is dragging
+        self._is_seeking = False
+        self._main_window_color = main_window_color
+        self._elapsed_color = QColor("#A8E6CF")  # Gentle green
 
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(10, 0, 10, 0)
+        # --- Layout ---
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        labels_layout = QHBoxLayout()
+        labels_layout.setContentsMargins(4, 0, 4, 0)
 
         self.current_time_label = QLabel("00:00")
-        self.slider = QSlider(Qt.Horizontal)
         self.total_time_label = QLabel("00:00")
+        
+        labels_layout.addWidget(self.current_time_label)
+        labels_layout.addStretch()
+        labels_layout.addWidget(self.total_time_label)
 
-        # --- Styling ---
-        self.current_time_label.setStyleSheet("color: #E0E0E0;")
-        self.total_time_label.setStyleSheet("color: #E0E0E0;")
-        self.slider.setStyleSheet("""
-            QSlider::groove:horizontal {
-                height: 4px;
-                background: #3d3d3d;
-                margin: 2px 0;
-                border-radius: 2px;
-            }
-            QSlider::handle:horizontal {
-                background: #E0E0E0;
-                width: 12px;
-                height: 12px;
-                margin: -4px 0;
-                border-radius: 6px;
-            }
-            QSlider::sub-page:horizontal {
-                background: #1DB954; /* Spotify green for played part */
-                height: 4px;
-                border-radius: 2px;
-            }
-        """)
+        self.slider = QSlider(Qt.Horizontal)
 
-        layout.addWidget(self.current_time_label)
-        layout.addWidget(self.slider)
-        layout.addWidget(self.total_time_label)
+        main_layout.addLayout(labels_layout)
+        main_layout.addWidget(self.slider)
 
+        self.update_stylesheet()
+
+        # --- Connections ---
         self.slider.sliderMoved.connect(self.on_slider_moved)
         self.slider.sliderPressed.connect(self.on_slider_pressed)
         self.slider.sliderReleased.connect(self.on_slider_released)
 
+    def set_elapsed_color(self, color: QColor):
+        self._elapsed_color = color
+        self.update_stylesheet()
+
+    def set_main_window_color(self, color: QColor):
+        self._main_window_color = color
+        self.update_stylesheet()
+
+    def update_stylesheet(self):
+        main_window_color_hex = self._main_window_color.name()
+        
+        # Invert the main window color for the outer handle
+        inverted_color = QColor(
+            255 - self._main_window_color.red(),
+            255 - self._main_window_color.green(),
+            255 - self._main_window_color.blue()
+        )
+        inverted_color_hex = inverted_color.name()
+
+        self.slider.setStyleSheet(f"""
+            QSlider::groove:horizontal {{
+                height: 4px;
+                background: {main_window_color_hex};
+                margin: 2px 0;
+                border-radius: 2px;
+            }}
+            QSlider::sub-page:horizontal {{
+                background: {self._elapsed_color.name()};
+                height: 4px;
+                border-radius: 2px;
+                margin: 2px 0;
+            }}
+            QSlider::handle:horizontal {{
+                background: {main_window_color_hex};
+                border: 1px solid {inverted_color_hex};
+                width: 12px;
+                height: 12px;
+                margin: -4px 0;
+                border-radius: 6px;
+            }}
+        """)
+        self.current_time_label.setStyleSheet(f"color: {inverted_color.name()};")
+        self.total_time_label.setStyleSheet(f"color: {inverted_color.name()};")
+        
+        tooltip_bg_color = self._elapsed_color.darker(150)
+        self.setStyleSheet(f"""
+            QToolTip {{
+                color: #ffffff;
+                background-color: {tooltip_bg_color.name()};
+                border: 1px solid white;
+                border-radius: 5px;
+                padding: 5px;
+            }}
+        """)
+
     def on_slider_moved(self, value):
-        """Shows a tooltip with the current time when the user drags the slider."""
         if self.slider.maximum() > 0:
             formatted_time = self._format_time(value)
-            # Show tooltip slightly above and to the left of the cursor
             tooltip_pos = QCursor.pos()
             QToolTip.showText(tooltip_pos, formatted_time, self, self.slider.rect())
 
@@ -65,7 +107,7 @@ class ProgressSlider(QWidget):
 
     def on_slider_released(self):
         self._is_seeking = False
-        QToolTip.hideText() # Ensure the tooltip is hidden on release
+        QToolTip.hideText()
         if self.slider.maximum() > 0:
             position = self.slider.value() / self.slider.maximum()
             self.seek_requested.emit(position)
@@ -73,10 +115,9 @@ class ProgressSlider(QWidget):
     def _format_time(self, ms):
         seconds = int((ms / 1000) % 60)
         minutes = int((ms / (1000 * 60)) % 60)
-        return f"{minutes:02d}:{seconds:02d}"
+        return f"{{minutes:02d}}:{{seconds:02d}}"
 
     def update_progress(self, time_ms, duration_ms):
-        # Only update the slider if the user is not currently dragging it
         if not self._is_seeking:
             self.slider.setRange(0, duration_ms)
             self.slider.setValue(time_ms)
